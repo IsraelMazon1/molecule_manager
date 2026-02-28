@@ -1,0 +1,25 @@
+cat > molecule-manager/.gitignore << 'EOF'
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# Environment
+.env
+*.env.local
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Database
+*.db
+*.sqlite
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
+EOF

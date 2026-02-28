@@ -1,0 +1,31 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from app.core.limiter import limiter
+from app.core.settings import settings
+from app.routers import auth, chemistry, experiments, labs, molecules
+
+app = FastAPI(title="Molecule Manager API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins.split(","),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH"],
+    allow_headers=["Content-Type", "Set-Cookie"],
+)
+
+app.include_router(auth.router)
+app.include_router(labs.router)
+app.include_router(chemistry.router)
+app.include_router(molecules.router)
+app.include_router(experiments.router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

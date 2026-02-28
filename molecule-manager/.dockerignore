@@ -1,0 +1,11 @@
+**/__pycache__
+**/*.pyc
+**/.venv
+apps/api/.venv
+
+apps/web/node_modules
+apps/web/.next
+apps/web/middleware.ts
+
+.env
+*.env.local
