@@ -12,6 +12,17 @@ export interface Lab {
   created_at: string;
 }
 
+export interface LabMember {
+  user_id: string;
+  email: string;
+  role: "PI" | "STUDENT";
+  joined_at: string;
+}
+
+export interface LabDetail extends Lab {
+  members: LabMember[];
+}
+
 export interface Molecule {
   id: string;
   lab_id: string;
@@ -19,6 +30,8 @@ export interface Molecule {
   name: string;
   smiles: string;
   canonical_smiles: string | null;
+  inchi: string | null;
+  inchikey: string | null;
   date_created: string; // ISO date "YYYY-MM-DD"
   method_used: string;
   notes: string | null;
@@ -45,4 +58,27 @@ export interface Experiment {
 
 export interface ExperimentDetail extends Experiment {
   molecules: Molecule[];
+}
+
+export interface SimilarityHit extends Molecule {
+  similarity: number; // Tanimoto coefficient [0, 1]
+}
+
+export interface AuditLog {
+  id: string;
+  lab_id: string;
+  user_id: string | null;
+  action: string; // "CREATE" | "UPDATE" | "DELETE"
+  entity_type: string; // "MOLECULE" | "EXPERIMENT" | "EXPERIMENT_MOLECULE" | "LAB_MEMBER"
+  entity_id: string;
+  entity_name: string | null;
+  detail: string | null;
+  created_at: string; // ISO datetime
+}
+
+export interface AuditLogPage {
+  total: number;
+  limit: number;
+  offset: number;
+  items: AuditLog[];
 }

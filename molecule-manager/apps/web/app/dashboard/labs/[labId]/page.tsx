@@ -4,21 +4,30 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { api } from "@/lib/api";
-import type { Experiment, Lab, Molecule } from "@/types";
+import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import type { Experiment, LabDetail, LabMember, Molecule } from "@/types";
 
 export default function LabPage() {
   const { labId } = useParams<{ labId: string }>();
+  const { user } = useAuth();
 
-  const [lab, setLab] = useState<Lab | null>(null);
+  const [lab, setLab] = useState<LabDetail | null>(null);
   const [molecules, setMolecules] = useState<Molecule[]>([]);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [promoteError, setPromoteError] = useState("");
+
+  function fetchLab() {
+    return api.get<LabDetail>(`/api/v1/labs/${labId}`);
+  }
+
   useEffect(() => {
     Promise.all([
-      api.get<Lab>(`/api/v1/labs/${labId}`),
+      fetchLab(),
       api.get<Molecule[]>(`/api/v1/labs/${labId}/molecules/`),
       api.get<Experiment[]>(`/api/v1/labs/${labId}/experiments/`),
     ])
@@ -29,7 +38,26 @@ export default function LabPage() {
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labId]);
+
+  async function handlePromote(member: LabMember) {
+    setPromotingId(member.user_id);
+    setPromoteError("");
+    try {
+      await api.patch(`/api/v1/labs/${labId}/members/${member.user_id}/role`, {
+        role: "PI",
+      });
+      const updated = await fetchLab();
+      setLab(updated);
+    } catch (err) {
+      setPromoteError(
+        err instanceof ApiError ? err.message : "Failed to promote member.",
+      );
+    } finally {
+      setPromotingId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -52,6 +80,10 @@ export default function LabPage() {
       </main>
     );
   }
+
+  const currentUserRole =
+    lab.members.find((m) => m.user_id === user?.id)?.role ?? "STUDENT";
+  const isPI = currentUserRole === "PI";
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -121,6 +153,83 @@ export default function LabPage() {
             →
           </span>
         </Link>
+
+        {isPI && (
+          <Link
+            href={`/dashboard/labs/${labId}/audit`}
+            className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-400 hover:shadow-sm sm:col-span-2"
+          >
+            <div>
+              <h2 className="font-semibold text-zinc-900">Audit Log</h2>
+              <p className="mt-0.5 text-sm text-zinc-500">
+                View all lab activity — PI only
+              </p>
+            </div>
+            <span className="text-xl text-zinc-300 transition-colors group-hover:text-zinc-600">
+              →
+            </span>
+          </Link>
+        )}
+      </div>
+
+      {/* Members section */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-zinc-900">
+          Members{" "}
+          <span className="ml-1 text-base font-normal text-zinc-400">
+            ({lab.members.length})
+          </span>
+        </h2>
+
+        {promoteError && (
+          <p className="mt-2 text-xs text-red-600">{promoteError}</p>
+        )}
+
+        <div className="mt-3 space-y-2">
+          {lab.members.map((member) => {
+            const isYou = member.user_id === user?.id;
+            const canPromote = isPI && !isYou && member.role === "STUDENT";
+
+            return (
+              <div
+                key={member.user_id}
+                className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-5 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-zinc-900">
+                    {member.email}
+                    {isYou && (
+                      <span className="ml-1.5 text-xs text-zinc-400">
+                        (you)
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      member.role === "PI"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {member.role}
+                  </span>
+                </div>
+
+                {canPromote && (
+                  <button
+                    onClick={() => handlePromote(member)}
+                    disabled={promotingId === member.user_id}
+                    className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-amber-400 hover:text-amber-700 disabled:opacity-50"
+                  >
+                    {promotingId === member.user_id
+                      ? "Promoting…"
+                      : "Promote to PI"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </main>
   );

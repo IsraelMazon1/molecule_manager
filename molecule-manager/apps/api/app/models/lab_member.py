@@ -1,10 +1,16 @@
+import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import DateTime, Enum as SQLAlchemyEnum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+
+
+class MemberRole(str, enum.Enum):
+    PI = "PI"
+    STUDENT = "STUDENT"
 
 
 class LabMember(Base):
@@ -22,4 +28,9 @@ class LabMember(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+    )
+    role: Mapped[MemberRole] = mapped_column(
+        SQLAlchemyEnum(MemberRole, name="member_role", create_constraint=False),
+        nullable=False,
+        default=MemberRole.STUDENT,
     )

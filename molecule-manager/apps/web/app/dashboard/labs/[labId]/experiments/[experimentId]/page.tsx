@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import type { ExperimentDetail, Molecule } from "@/types";
+import { useAuth } from "@/lib/auth";
+import type { ExperimentDetail, LabDetail, Molecule } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,8 +35,12 @@ export default function ExperimentDetailPage() {
     experimentId: string;
   }>();
   const router = useRouter();
+  const { user } = useAuth();
 
   const [exp, setExp] = useState<ExperimentDetail | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<"PI" | "STUDENT">(
+    "STUDENT",
+  );
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -51,19 +56,33 @@ export default function ExperimentDetailPage() {
   const [attaching, setAttaching] = useState<string | null>(null);
   const [detaching, setDetaching] = useState<string | null>(null);
 
+  // Lightweight refresh used after attach/detach operations.
   const fetchExp = useCallback(() => {
     api
       .get<ExperimentDetail>(
         `/api/v1/labs/${labId}/experiments/${experimentId}`,
       )
       .then(setExp)
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      .catch(() => setNotFound(true));
   }, [labId, experimentId]);
 
+  // Initial load: fetch experiment + lab detail in parallel.
   useEffect(() => {
-    fetchExp();
-  }, [fetchExp]);
+    Promise.all([
+      api.get<ExperimentDetail>(
+        `/api/v1/labs/${labId}/experiments/${experimentId}`,
+      ),
+      api.get<LabDetail>(`/api/v1/labs/${labId}`),
+    ])
+      .then(([experiment, lab]) => {
+        setExp(experiment);
+        const role =
+          lab.members.find((m) => m.user_id === user?.id)?.role ?? "STUDENT";
+        setCurrentUserRole(role);
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false));
+  }, [labId, experimentId, user?.id]);
 
   // Load all lab molecules when the attach panel opens
   useEffect(() => {
@@ -113,6 +132,9 @@ export default function ExperimentDetailPage() {
   }
 
   // ── Derived ─────────────────────────────────────────────────────────────────
+
+  const canDelete =
+    exp?.created_by_user_id === user?.id || currentUserRole === "PI";
 
   const attachedIds = new Set(exp?.molecules.map((m) => m.id) ?? []);
 
@@ -168,6 +190,7 @@ export default function ExperimentDetailPage() {
         </div>
 
         {/* Delete control */}
+        {canDelete && (
         <div className="shrink-0">
           {deleteError && (
             <p className="mb-2 text-xs text-red-600">{deleteError}</p>
@@ -198,6 +221,7 @@ export default function ExperimentDetailPage() {
             </button>
           )}
         </div>
+        )}
       </div>
 
       {/* Notes */}

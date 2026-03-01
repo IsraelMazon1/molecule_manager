@@ -10,6 +10,7 @@ from app.deps.lab import get_lab_member
 from app.models.experiment import Experiment
 from app.models.experiment_molecule import ExperimentMolecule
 from app.models.lab import Lab
+from app.models.lab_member import LabMember, MemberRole
 from app.models.molecule import Molecule
 from app.models.user import User
 from app.schemas.experiment import (
@@ -17,6 +18,7 @@ from app.schemas.experiment import (
     ExperimentDetailResponse,
     ExperimentResponse,
 )
+from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/v1/labs/{lab_id}/experiments", tags=["experiments"])
 
@@ -62,6 +64,15 @@ def create(
     db.add(exp)
     db.commit()
     db.refresh(exp)
+    log_action(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="CREATE",
+        entity_type="EXPERIMENT",
+        entity_id=exp.id,
+        entity_name=exp.title,
+    )
     return exp
 
 
@@ -101,6 +112,7 @@ def attach_molecule(
     experiment_id: uuid.UUID,
     molecule_id: uuid.UUID,
     lab: Lab = Depends(get_lab_member),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ExperimentDetailResponse:
     exp = _get_experiment(experiment_id, lab.id, db)
@@ -129,6 +141,16 @@ def attach_molecule(
 
     db.add(ExperimentMolecule(experiment_id=exp.id, molecule_id=mol.id))
     db.commit()
+    log_action(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="CREATE",
+        entity_type="EXPERIMENT_MOLECULE",
+        entity_id=exp.id,
+        entity_name=f"{exp.title} ← {mol.name}",
+        detail=f"Attached molecule '{mol.name}' to experiment '{exp.title}'",
+    )
 
     molecules = _get_molecules_for(exp.id, db)
     return ExperimentDetailResponse.model_validate(
@@ -144,6 +166,7 @@ def detach_molecule(
     experiment_id: uuid.UUID,
     molecule_id: uuid.UUID,
     lab: Lab = Depends(get_lab_member),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
     exp = _get_experiment(experiment_id, lab.id, db)
@@ -160,16 +183,58 @@ def detach_molecule(
             detail="Molecule not attached to this experiment",
         )
 
+    mol = db.get(Molecule, molecule_id)
+    exp_title = exp.title
+    exp_id = exp.id
+    mol_name = mol.name if mol else str(molecule_id)
+
     db.delete(link)
     db.commit()
+    log_action(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="DELETE",
+        entity_type="EXPERIMENT_MOLECULE",
+        entity_id=exp_id,
+        entity_name=f"{exp_title} ← {mol_name}",
+        detail=f"Detached molecule '{mol_name}' from experiment '{exp_title}'",
+    )
 
 
 @router.delete("/{experiment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete(
     experiment_id: uuid.UUID,
     lab: Lab = Depends(get_lab_member),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> None:
     exp = _get_experiment(experiment_id, lab.id, db)
+
+    member = db.execute(
+        select(LabMember).where(
+            LabMember.lab_id == lab.id,
+            LabMember.user_id == current_user.id,
+        )
+    ).scalar_one_or_none()
+    role = member.role if member else MemberRole.STUDENT
+
+    if exp.created_by_user_id != current_user.id and role != MemberRole.PI:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the creator or a PI can delete this experiment",
+        )
+
+    exp_id = exp.id
+    exp_title = exp.title
     db.delete(exp)
     db.commit()
+    log_action(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="DELETE",
+        entity_type="EXPERIMENT",
+        entity_id=exp_id,
+        entity_name=exp_title,
+    )

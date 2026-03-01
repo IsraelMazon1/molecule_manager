@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.limiter import limiter
 from app.core.settings import settings
-from app.routers import auth, chemistry, experiments, labs, molecules
+from app.routers import audit, auth, chemistry, experiments, labs, molecules
 
 app = FastAPI(title="Molecule Manager API")
 app.state.limiter = limiter
@@ -20,6 +20,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(audit.router)
 app.include_router(labs.router)
 app.include_router(chemistry.router)
 app.include_router(molecules.router)

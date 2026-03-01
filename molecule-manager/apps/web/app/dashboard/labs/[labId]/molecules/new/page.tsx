@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import type { Molecule } from "@/types";
@@ -17,6 +17,16 @@ interface ChemPreview {
   tpsa: number;
   rotatable_bonds: number;
   svg_image: string;
+}
+
+// Shape returned by GET /api/v1/chemistry/pubchem
+interface PubChemResult {
+  pubchem_cid: number;
+  name: string;
+  smiles: string;
+  molecular_formula: string;
+  molecular_weight: number;
+  iupac_name: string;
 }
 
 // ─── Small display helpers ────────────────────────────────────────────────────
@@ -50,29 +60,71 @@ export default function NewMoleculePage() {
   const [smilesError, setSmilesError] = useState("");
   const [preview, setPreview] = useState<ChemPreview | null>(null);
 
+  // tracks CID when user selects a PubChem result (cleared if SMILES edited)
+  const [selectedCid, setSelectedCid] = useState<number | null>(null);
+
   // form submit state
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // ── Validate SMILES on blur ──────────────────────────────────────────────
+  // PubChem search panel
+  const [showPubchem, setShowPubchem] = useState(false);
+  const [pubchemQuery, setPubchemQuery] = useState("");
+  const [pubchemResults, setPubchemResults] = useState<PubChemResult[]>([]);
+  const [pubchemLoading, setPubchemLoading] = useState(false);
+  const [pubchemError, setPubchemError] = useState("");
 
-  async function handleSmilesBlur() {
-    const val = smiles.trim();
+  const smilesInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Live PubChem search (debounced) ───────────────────────────────────────
+
+  useEffect(() => {
+    const q = pubchemQuery.trim();
+    if (!showPubchem || !q) {
+      setPubchemResults([]);
+      setPubchemError("");
+      setPubchemLoading(false);
+      return;
+    }
+
+    setPubchemLoading(true);
+    setPubchemError("");
+
+    const timer = setTimeout(async () => {
+      try {
+        const results = await api.get<PubChemResult[]>(
+          `/api/v1/chemistry/pubchem?query=${encodeURIComponent(q)}`,
+        );
+        setPubchemResults(results);
+        if (results.length === 0) {
+          setPubchemError("No results found. Try a different name or CAS number.");
+        }
+      } catch {
+        setPubchemError("Search failed. Please try again.");
+      } finally {
+        setPubchemLoading(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [pubchemQuery, showPubchem]);
+
+  // ── Validate SMILES ───────────────────────────────────────────────────────
+
+  async function validateSmiles(raw: string) {
+    const val = raw.trim();
     if (!val) {
       setPreview(null);
       setSmilesError("");
       return;
     }
-
     setValidating(true);
     setSmilesError("");
     setPreview(null);
-
     try {
-      const result = await api.post<ChemPreview>(
-        "/api/v1/chemistry/validate",
-        { smiles: val },
-      );
+      const result = await api.post<ChemPreview>("/api/v1/chemistry/validate", {
+        smiles: val,
+      });
       setPreview(result);
     } catch (err) {
       setSmilesError(
@@ -85,7 +137,26 @@ export default function NewMoleculePage() {
     }
   }
 
-  // ── Submit ───────────────────────────────────────────────────────────────
+  async function handleSmilesBlur() {
+    await validateSmiles(smiles);
+  }
+
+  async function handleSelectResult(result: PubChemResult) {
+    // Pre-fill name if currently empty
+    if (!name.trim()) {
+      setName(result.iupac_name || result.name);
+    }
+    setSmiles(result.smiles);
+    setSelectedCid(result.pubchem_cid);
+    setShowPubchem(false);
+    setPubchemResults([]);
+    setPubchemQuery("");
+    // Trigger validation with the PubChem SMILES
+    await validateSmiles(result.smiles);
+    smilesInputRef.current?.focus();
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,24 +164,37 @@ export default function NewMoleculePage() {
 
     if (smilesError) return;
     if (!preview) {
-      setSubmitError(
-        "Please wait for SMILES validation before saving.",
-      );
+      setSubmitError("Please wait for SMILES validation before saving.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const mol = await api.post<Molecule>(
-        `/api/v1/labs/${labId}/molecules/`,
-        {
+      let mol: Molecule;
+
+      if (selectedCid !== null) {
+        // User selected a PubChem compound — use the import endpoint so the
+        // backend fetches authoritative SMILES (CID is NOT stored permanently).
+        mol = await api.post<Molecule>(
+          `/api/v1/labs/${labId}/molecules/import-pubchem`,
+          {
+            pubchem_cid: selectedCid,
+            name: name.trim(),
+            method_used: methodUsed.trim(),
+            date_created: dateCreated,
+            notes: notes.trim() || null,
+          },
+        );
+      } else {
+        mol = await api.post<Molecule>(`/api/v1/labs/${labId}/molecules/`, {
           name: name.trim(),
           smiles: smiles.trim(),
           date_created: dateCreated,
           method_used: methodUsed.trim(),
           notes: notes.trim() || null,
-        },
-      );
+        });
+      }
+
       router.push(`/dashboard/labs/${labId}/molecules/${mol.id}`);
     } catch (err) {
       setSubmitError(
@@ -160,26 +244,97 @@ export default function NewMoleculePage() {
           />
         </div>
 
-        {/* SMILES */}
+        {/* SMILES + PubChem search */}
         <div>
-          <label
-            htmlFor="smiles"
-            className="block text-sm font-medium text-zinc-700"
-          >
-            SMILES <span className="text-red-500">*</span>
-          </label>
+          <div className="flex items-baseline justify-between">
+            <label
+              htmlFor="smiles"
+              className="block text-sm font-medium text-zinc-700"
+            >
+              SMILES <span className="text-red-500">*</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPubchem((v) => !v);
+                setPubchemError("");
+              }}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800"
+            >
+              {showPubchem ? "Close PubChem search" : "Search PubChem"}
+            </button>
+          </div>
           <p className="mt-0.5 text-xs text-zinc-400">
             Structure is validated and previewed when you leave this field
           </p>
+
+          {/* PubChem search panel */}
+          {showPubchem && (
+            <div className="mt-2 rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p className="mb-3 text-xs font-medium text-blue-700">
+                Search by molecule name or CAS number
+              </p>
+              <div className="relative">
+                <input
+                  value={pubchemQuery}
+                  onChange={(e) => setPubchemQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                  placeholder="e.g. Aspirin, doxycycline, 50-78-2…"
+                  autoFocus
+                  className="block w-full rounded-lg border border-blue-300 bg-white px-3 py-2 pr-9 text-sm text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                {pubchemLoading && (
+                  <span className="absolute right-3 top-2.5">
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
+                  </span>
+                )}
+              </div>
+
+              {pubchemError && (
+                <p className="mt-2 text-xs text-red-600">{pubchemError}</p>
+              )}
+
+              {pubchemResults.length > 0 && (
+                <ul className="mt-3 max-h-72 space-y-1.5 overflow-y-auto">
+                  {pubchemResults.map((r) => (
+                    <li key={r.pubchem_cid}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectResult(r)}
+                        className="w-full rounded-lg border border-blue-100 bg-white px-3 py-2.5 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
+                      >
+                        <p className="text-sm font-medium text-zinc-900 truncate">
+                          {r.iupac_name || r.name || `CID ${r.pubchem_cid}`}
+                        </p>
+                        <p className="mt-0.5 flex gap-3 text-xs text-zinc-500">
+                          <span className="font-mono">{r.molecular_formula}</span>
+                          {r.molecular_weight > 0 && (
+                            <span>{r.molecular_weight.toFixed(2)} g/mol</span>
+                          )}
+                          <span className="text-zinc-400">
+                            CID {r.pubchem_cid}
+                          </span>
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+            </div>
+          )}
+
           <div className="relative mt-1">
             <input
               id="smiles"
+              ref={smilesInputRef}
               required
               value={smiles}
               onChange={(e) => {
                 setSmiles(e.target.value);
                 setPreview(null);
                 setSmilesError("");
+                setSelectedCid(null); // user edited manually — clear PubChem CID
               }}
               onBlur={handleSmilesBlur}
               placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O"
@@ -200,6 +355,11 @@ export default function NewMoleculePage() {
           </div>
           {smilesError && (
             <p className="mt-1.5 text-xs text-red-600">{smilesError}</p>
+          )}
+          {selectedCid !== null && (
+            <p className="mt-1 text-xs text-blue-600">
+              PubChem CID {selectedCid} selected
+            </p>
           )}
         </div>
 

@@ -56,6 +56,8 @@ class MoleculeResponse(BaseModel):
     name: str
     smiles: str
     canonical_smiles: str | None
+    inchi: str | None
+    inchikey: str | None
     date_created: date
     method_used: str
     notes: str | None
@@ -68,3 +70,57 @@ class MoleculeResponse(BaseModel):
     svg_image: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class SubstructureSearchRequest(BaseModel):
+    smiles: str
+
+    @field_validator("smiles")
+    @classmethod
+    def smiles_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("SMILES must not be empty")
+        return v
+
+
+class SimilaritySearchRequest(BaseModel):
+    query_smiles: str
+    threshold: float = 0.7
+
+    @field_validator("query_smiles")
+    @classmethod
+    def query_smiles_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("query_smiles must not be empty")
+        return v
+
+    @field_validator("threshold")
+    @classmethod
+    def threshold_in_range(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("threshold must be between 0.0 and 1.0")
+        return v
+
+
+class SimilarityHit(MoleculeResponse):
+    """MoleculeResponse extended with a Tanimoto similarity score."""
+
+    similarity: float
+
+
+class ImportPubChemRequest(BaseModel):
+    pubchem_cid: int
+    name: str
+    method_used: str
+    date_created: date
+    notes: str | None = None
+
+    @field_validator("name", "method_used")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field must not be empty")
+        return v

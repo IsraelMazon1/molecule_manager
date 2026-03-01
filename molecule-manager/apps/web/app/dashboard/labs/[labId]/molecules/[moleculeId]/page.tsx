@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import type { Molecule } from "@/types";
+import { useAuth } from "@/lib/auth";
+import type { LabDetail, Molecule } from "@/types";
 
 function PropRow({ label, value }: { label: string; value: string | number }) {
   return (
@@ -22,23 +23,78 @@ export default function MoleculeDetailPage() {
     moleculeId: string;
   }>();
   const router = useRouter();
+  const { user } = useAuth();
 
   const [mol, setMol] = useState<Molecule | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<"PI" | "STUDENT">(
+    "STUDENT",
+  );
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // delete confirmation state
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+  // edit state
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editMethod, setEditMethod] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
   useEffect(() => {
-    api
-      .get<Molecule>(`/api/v1/labs/${labId}/molecules/${moleculeId}`)
-      .then(setMol)
+    Promise.all([
+      api.get<Molecule>(`/api/v1/labs/${labId}/molecules/${moleculeId}`),
+      api.get<LabDetail>(`/api/v1/labs/${labId}`),
+    ])
+      .then(([molecule, lab]) => {
+        setMol(molecule);
+        const role =
+          lab.members.find((m) => m.user_id === user?.id)?.role ?? "STUDENT";
+        setCurrentUserRole(role);
+      })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [labId, moleculeId]);
+  }, [labId, moleculeId, user?.id]);
+
+  function openEdit() {
+    if (!mol) return;
+    setEditName(mol.name);
+    setEditDate(mol.date_created);
+    setEditMethod(mol.method_used);
+    setEditNotes(mol.notes ?? "");
+    setSaveError("");
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await api.patch<Molecule>(
+        `/api/v1/labs/${labId}/molecules/${moleculeId}`,
+        {
+          name: editName || undefined,
+          date_created: editDate || undefined,
+          method_used: editMethod || undefined,
+          notes: editNotes || undefined,
+        },
+      );
+      setMol(updated);
+      setEditing(false);
+    } catch (err) {
+      setSaveError(
+        err instanceof ApiError ? err.message : "Save failed. Please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -77,6 +133,9 @@ export default function MoleculeDetailPage() {
     );
   }
 
+  const canEditOrDelete =
+    mol.created_by_user_id === user?.id || currentUserRole === "PI";
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       {/* Header */}
@@ -98,38 +157,121 @@ export default function MoleculeDetailPage() {
           )}
         </div>
 
-        {/* Delete control */}
-        <div className="shrink-0">
-          {deleteError && (
-            <p className="mb-2 text-xs text-red-600">{deleteError}</p>
-          )}
-          {confirmDelete ? (
+        {/* Action controls */}
+        {canEditOrDelete && (
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {deleteError && (
+              <p className="text-xs text-red-600">{deleteError}</p>
+            )}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-600">Are you sure?</span>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="text-sm text-zinc-500 hover:text-zinc-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </button>
+              {!editing && (
+                <button
+                  onClick={openEdit}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-900"
+                >
+                  Edit
+                </button>
+              )}
+              {confirmDelete ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-zinc-600">Are you sure?</span>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="text-sm text-zinc-500 hover:text-zinc-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deleting ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:border-red-300 hover:text-red-600"
+                >
+                  Delete
+                </button>
+              )}
             </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:border-red-300 hover:text-red-600"
-            >
-              Delete
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Inline edit form */}
+      {editing && (
+        <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold text-zinc-900">
+            Edit molecule
+          </h2>
+          {saveError && (
+            <p className="mb-3 text-xs text-red-600">{saveError}</p>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                Name
+              </label>
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                Date created
+              </label>
+              <input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                Method used
+              </label>
+              <input
+                value={editMethod}
+                onChange={(e) => setEditMethod(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-zinc-500">
+                Notes
+              </label>
+              <textarea
+                rows={3}
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => setEditing(false)}
+              className="text-sm text-zinc-500 hover:text-zinc-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[300px_1fr]">
         {/* Structure */}
@@ -182,6 +324,26 @@ export default function MoleculeDetailPage() {
             )}
             {mol.rotatable_bonds !== null && (
               <PropRow label="Rotatable bonds" value={mol.rotatable_bonds} />
+            )}
+            {mol.inchikey && (
+              <div className="flex items-center justify-between py-1.5 text-sm border-b border-zinc-100 last:border-0">
+                <span className="text-zinc-500">InChIKey</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-xs text-zinc-700 break-all">
+                    {mol.inchikey}
+                  </span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(mol.inchikey!);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100"
+                  >
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 

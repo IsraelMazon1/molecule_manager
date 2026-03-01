@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
 from app.models.lab import Lab
-from app.models.lab_member import LabMember
+from app.models.lab_member import LabMember, MemberRole
 from app.models.user import User
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ def create_lab(db: Session, name: str, password: str, creator: User) -> Lab:
     db.add(lab)
     db.flush()  # populate lab.id before inserting the membership row
 
-    db.add(LabMember(lab_id=lab.id, user_id=creator.id))
+    db.add(LabMember(lab_id=lab.id, user_id=creator.id, role=MemberRole.PI))
     db.commit()
     db.refresh(lab)
     return lab

@@ -12,6 +12,7 @@ class Molecule(Base):
     __table_args__ = (
         Index("ix_molecules_lab_id_name", "lab_id", "name"),
         Index("ix_molecules_lab_id_smiles", "lab_id", "smiles"),
+        Index("ix_molecules_lab_id_inchikey", "lab_id", "inchikey"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -24,6 +25,9 @@ class Molecule(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     smiles: Mapped[str] = mapped_column(String, nullable=False)
     canonical_smiles: Mapped[str | None] = mapped_column(String, nullable=True)
+    inchi: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inchikey: Mapped[str | None] = mapped_column(String(27), nullable=True)
+    morgan_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
     date_created: Mapped[date] = mapped_column(Date, nullable=False)
     method_used: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
