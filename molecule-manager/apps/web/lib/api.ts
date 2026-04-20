@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+if (!API_BASE) {
+  throw new Error("NEXT_PUBLIC_API_URL is not configured");
+}
 
 // ─── Error type ──────────────────────────────────────────────────────────────
 
@@ -31,11 +34,12 @@ export class ApiError extends Error {
 // ─── Core fetch wrapper ───────────────────────────────────────────────────────
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const isFormData = init.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: "include", // send session cookie with every request
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...init.headers,
     },
   });
@@ -84,5 +88,11 @@ export const api = {
 
   delete<T = void>(path: string): Promise<T> {
     return request<T>(path, { method: "DELETE" });
+  },
+
+  postFile<T>(path: string, file: File, fieldName = "file"): Promise<T> {
+    const form = new FormData();
+    form.append(fieldName, file);
+    return request<T>(path, { method: "POST", body: form });
   },
 };

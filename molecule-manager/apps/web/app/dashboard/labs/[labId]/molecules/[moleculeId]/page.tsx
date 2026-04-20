@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { sanitizeSvg } from "@/lib/sanitize";
 import type { LabDetail, Molecule } from "@/types";
 
 function PropRow({ label, value }: { label: string; value: string | number }) {
@@ -280,7 +281,7 @@ export default function MoleculeDetailPage() {
             <div
               className="overflow-hidden rounded-xl border border-zinc-200 bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
               style={{ height: 300, width: 300 }}
-              dangerouslySetInnerHTML={{ __html: mol.svg_image }}
+              dangerouslySetInnerHTML={{ __html: sanitizeSvg(mol.svg_image) }}
             />
           ) : (
             <div className="flex h-[300px] w-[300px] items-center justify-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50 text-sm text-zinc-400">

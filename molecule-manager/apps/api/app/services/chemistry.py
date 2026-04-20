@@ -25,6 +25,10 @@ class InvalidSMILESError(ValueError):
         self.smiles = smiles
 
 
+class InvalidMolFileError(ValueError):
+    """Raised when a MOL/SDF file cannot be parsed by RDKit."""
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -178,6 +182,35 @@ def is_substructure(query_smiles: str, target_smiles: str) -> bool:
     if q is None or t is None:
         return False
     return t.HasSubstructMatch(q)
+
+
+def parse_mol_file(content: str) -> str:
+    """Parse a MOL file and return the SMILES string.
+
+    Raises InvalidMolFileError if the file cannot be parsed.
+    """
+    mol = Chem.MolFromMolBlock(content)
+    if mol is None or mol.GetNumAtoms() == 0:
+        raise InvalidMolFileError("Could not parse MOL file")
+    return Chem.MolToSmiles(mol)
+
+
+def parse_sdf_file(content: str) -> list[str]:
+    """Parse an SDF file and return a list of SMILES strings (max 50).
+
+    Raises InvalidMolFileError if no valid molecules are found.
+    """
+    supplier = Chem.SDMolSupplier()
+    supplier.SetData(content)
+    smiles_list: list[str] = []
+    for mol in supplier:
+        if mol is not None and mol.GetNumAtoms() > 0:
+            smiles_list.append(Chem.MolToSmiles(mol))
+        if len(smiles_list) >= 50:
+            break
+    if not smiles_list:
+        raise InvalidMolFileError("No valid molecules found in SDF file")
+    return smiles_list
 
 
 def process_smiles(smiles: str) -> dict:

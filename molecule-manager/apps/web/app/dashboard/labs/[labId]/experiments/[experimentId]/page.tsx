@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { ExperimentDetail, LabDetail, Molecule } from "@/types";
+import { sanitizeSvg } from "@/lib/sanitize";
+import type { ExperimentDetail, LabDetail, Molecule, Protein } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ function SvgThumb({ svg }: { svg: string }) {
   return (
     <div
       className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-zinc-100 bg-white [&>svg]:h-full [&>svg]:w-full"
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: sanitizeSvg(svg) }}
     />
   );
 }
@@ -23,6 +24,14 @@ function NoStructure() {
   return (
     <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-xs text-zinc-400">
       —
+    </div>
+  );
+}
+
+function ProteinIcon() {
+  return (
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 text-lg font-bold text-zinc-400">
+      P
     </div>
   );
 }
@@ -49,12 +58,19 @@ export default function ExperimentDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  // attach panel state
+  // molecule attach panel state
   const [showAttach, setShowAttach] = useState(false);
   const [allMolecules, setAllMolecules] = useState<Molecule[] | null>(null);
   const [search, setSearch] = useState("");
   const [attaching, setAttaching] = useState<string | null>(null);
   const [detaching, setDetaching] = useState<string | null>(null);
+
+  // protein attach panel state
+  const [showAttachProtein, setShowAttachProtein] = useState(false);
+  const [allProteins, setAllProteins] = useState<Protein[] | null>(null);
+  const [proteinSearch, setProteinSearch] = useState("");
+  const [attachingProtein, setAttachingProtein] = useState<string | null>(null);
+  const [detachingProtein, setDetachingProtein] = useState<string | null>(null);
 
   // Lightweight refresh used after attach/detach operations.
   const fetchExp = useCallback(() => {
@@ -91,6 +107,14 @@ export default function ExperimentDetailPage() {
       .get<Molecule[]>(`/api/v1/labs/${labId}/molecules/`)
       .then(setAllMolecules);
   }, [showAttach, labId]);
+
+  // Load all lab proteins when the protein attach panel opens
+  useEffect(() => {
+    if (!showAttachProtein) return;
+    api
+      .get<{ items: Protein[] }>(`/api/v1/labs/${labId}/proteins/?limit=200`)
+      .then((res) => setAllProteins(res.items));
+  }, [showAttachProtein, labId]);
 
   async function handleDelete() {
     setDeleting(true);
@@ -131,20 +155,55 @@ export default function ExperimentDetailPage() {
     }
   }
 
+  async function handleAttachProtein(proteinId: string) {
+    setAttachingProtein(proteinId);
+    try {
+      await api.post(
+        `/api/v1/labs/${labId}/experiments/${experimentId}/proteins/${proteinId}`,
+      );
+      fetchExp();
+    } finally {
+      setAttachingProtein(null);
+    }
+  }
+
+  async function handleDetachProtein(proteinId: string) {
+    setDetachingProtein(proteinId);
+    try {
+      await api.delete(
+        `/api/v1/labs/${labId}/experiments/${experimentId}/proteins/${proteinId}`,
+      );
+      fetchExp();
+    } finally {
+      setDetachingProtein(null);
+    }
+  }
+
   // ── Derived ─────────────────────────────────────────────────────────────────
 
   const canDelete =
     exp?.created_by_user_id === user?.id || currentUserRole === "PI";
 
-  const attachedIds = new Set(exp?.molecules.map((m) => m.id) ?? []);
+  const attachedMolIds = new Set(exp?.molecules.map((m) => m.id) ?? []);
+  const attachedProtIds = new Set(exp?.proteins.map((p) => p.id) ?? []);
 
   const filteredMolecules = (allMolecules ?? []).filter((m) => {
     const q = search.toLowerCase();
     return (
-      !attachedIds.has(m.id) &&
+      !attachedMolIds.has(m.id) &&
       (m.name.toLowerCase().includes(q) ||
         (m.molecular_formula ?? "").toLowerCase().includes(q) ||
         m.smiles.toLowerCase().includes(q))
+    );
+  });
+
+  const filteredProteins = (allProteins ?? []).filter((p) => {
+    const q = proteinSearch.toLowerCase();
+    return (
+      !attachedProtIds.has(p.id) &&
+      (p.name.toLowerCase().includes(q) ||
+        (p.pdb_id ?? "").toLowerCase().includes(q) ||
+        (p.uniprot_id ?? "").toLowerCase().includes(q))
     );
   });
 
@@ -234,7 +293,7 @@ export default function ExperimentDetailPage() {
         </div>
       )}
 
-      {/* Molecules section */}
+      {/* ── Molecules section ──────────────────────────────────────────────── */}
       <div className="mt-8">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-zinc-900">
@@ -354,6 +413,127 @@ export default function ExperimentDetailPage() {
                   className="shrink-0 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-50"
                 >
                   {detaching === mol.id ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── Proteins section ───────────────────────────────────────────────── */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-zinc-900">
+            Proteins{" "}
+            <span className="ml-1 text-base font-normal text-zinc-400">
+              ({exp.proteins.length})
+            </span>
+          </h2>
+          <button
+            onClick={() => setShowAttachProtein((v) => !v)}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+          >
+            {showAttachProtein ? "Close" : "Attach protein"}
+          </button>
+        </div>
+
+        {/* Attach protein panel */}
+        {showAttachProtein && (
+          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-5">
+            <p className="mb-3 text-sm font-medium text-zinc-700">
+              Add proteins from this lab
+            </p>
+            <input
+              value={proteinSearch}
+              onChange={(e) => setProteinSearch(e.target.value)}
+              placeholder="Search by name, PDB ID, or UniProt ID…"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            />
+
+            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+              {allProteins === null ? (
+                <div className="flex justify-center py-6">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+                </div>
+              ) : filteredProteins.length === 0 ? (
+                <p className="py-4 text-center text-sm text-zinc-400">
+                  {proteinSearch
+                    ? "No proteins match your search."
+                    : "All lab proteins are already attached."}
+                </p>
+              ) : (
+                filteredProteins.map((prot) => (
+                  <div
+                    key={prot.id}
+                    className="flex items-center gap-3 rounded-lg border border-zinc-100 p-3"
+                  >
+                    <ProteinIcon />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-zinc-900">
+                        {prot.name}
+                      </p>
+                      <div className="flex gap-3 text-xs text-zinc-400">
+                        {prot.pdb_id && <span>PDB: {prot.pdb_id}</span>}
+                        {prot.uniprot_id && (
+                          <span>UniProt: {prot.uniprot_id}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleAttachProtein(prot.id)}
+                      disabled={attachingProtein === prot.id}
+                      className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+                    >
+                      {attachingProtein === prot.id ? "Adding…" : "Add"}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Attached proteins list */}
+        <div className="mt-4 space-y-3">
+          {exp.proteins.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-zinc-300 bg-white py-16 text-center">
+              <p className="text-sm text-zinc-500">
+                No proteins attached yet.
+              </p>
+              <button
+                onClick={() => setShowAttachProtein(true)}
+                className="mt-3 inline-block text-sm font-medium text-zinc-900 hover:underline"
+              >
+                Attach the first protein
+              </button>
+            </div>
+          ) : (
+            exp.proteins.map((prot) => (
+              <div
+                key={prot.id}
+                className="flex items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4"
+              >
+                <ProteinIcon />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/dashboard/labs/${labId}/proteins/${prot.id}`}
+                    className="font-semibold text-zinc-900 hover:underline truncate block"
+                  >
+                    {prot.name}
+                  </Link>
+                  <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-zinc-400">
+                    {prot.pdb_id && <span>PDB: {prot.pdb_id}</span>}
+                    {prot.uniprot_id && (
+                      <span>UniProt: {prot.uniprot_id}</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDetachProtein(prot.id)}
+                  disabled={detachingProtein === prot.id}
+                  className="shrink-0 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                >
+                  {detachingProtein === prot.id ? "Removing…" : "Remove"}
                 </button>
               </div>
             ))

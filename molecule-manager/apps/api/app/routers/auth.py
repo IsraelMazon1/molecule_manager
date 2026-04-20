@@ -30,7 +30,8 @@ def _set_session_cookie(response: Response, user_id: str) -> None:
 
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def signup(body: SignupRequest, response: Response, db: Session = Depends(get_db)) -> User:
+@limiter.limit("3/minute")
+def signup(request: Request, body: SignupRequest, response: Response, db: Session = Depends(get_db)) -> User:
     existing = db.execute(select(User).where(User.email == body.email)).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")

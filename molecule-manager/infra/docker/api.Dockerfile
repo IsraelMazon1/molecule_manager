@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxext6 \
     libexpat1 \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install runtime + dev (pytest) dependencies first for layer caching.
@@ -25,6 +28,10 @@ COPY apps/api/tests/ ./tests/
 # Copy startup script and make it executable.
 COPY infra/scripts/start-api.sh ./start-api.sh
 RUN chmod +x ./start-api.sh
+
+RUN adduser --disabled-password --no-create-home --gecos "" appuser \
+    && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8000
 CMD ["/app/start-api.sh"]

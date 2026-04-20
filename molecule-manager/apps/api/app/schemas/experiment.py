@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, field_validator
 
 from app.schemas.molecule import MoleculeResponse
+from app.schemas.protein import ProteinList
 
 
 class CreateExperimentRequest(BaseModel):
@@ -35,6 +36,7 @@ class ExperimentResponse(BaseModel):
 
 
 class ExperimentDetailResponse(ExperimentResponse):
-    """Returned by get-one — includes the full attached molecule list."""
+    """Returned by get-one — includes the full attached molecule and protein lists."""
 
     molecules: list[MoleculeResponse] = []
+    proteins: list[ProteinList] = []

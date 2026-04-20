@@ -110,6 +110,49 @@ class SimilarityHit(MoleculeResponse):
     similarity: float
 
 
+class MolFilePreview(BaseModel):
+    smiles: str
+    canonical_smiles: str
+    molecular_weight: float
+    molecular_formula: str
+    hbd: int
+    hba: int
+    tpsa: float
+    rotatable_bonds: int
+    svg_image: str
+
+
+class MolFileParseResponse(BaseModel):
+    molecules: list[MolFilePreview]
+
+
+class BulkCreateItem(BaseModel):
+    name: str
+    smiles: str
+    date_created: date
+    method_used: str
+    notes: str | None = None
+
+    @field_validator("name", "method_used")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Field must not be empty")
+        return v
+
+
+class BulkCreateRequest(BaseModel):
+    molecules: list[BulkCreateItem]
+
+    @field_validator("molecules")
+    @classmethod
+    def max_50(cls, v: list[BulkCreateItem]) -> list[BulkCreateItem]:
+        if len(v) > 50:
+            raise ValueError("Maximum 50 molecules per bulk import")
+        return v
+
+
 class ImportPubChemRequest(BaseModel):
     pubchem_cid: int
     name: str

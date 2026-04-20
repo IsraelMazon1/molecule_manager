@@ -56,12 +56,63 @@ export interface Experiment {
   created_at: string;
 }
 
+export interface ProteinListItem {
+  id: string;
+  lab_id: string;
+  name: string;
+  display_name: string | null;
+  uniprot_id: string | null;
+  pdb_id: string | null;
+  source: string;
+  created_at: string;
+}
+
 export interface ExperimentDetail extends Experiment {
   molecules: Molecule[];
+  proteins: ProteinListItem[];
 }
 
 export interface SimilarityHit extends Molecule {
   similarity: number; // Tanimoto coefficient [0, 1]
+}
+
+export interface MolFilePreview {
+  smiles: string;
+  canonical_smiles: string;
+  molecular_weight: number;
+  molecular_formula: string;
+  hbd: number;
+  hba: number;
+  tpsa: number;
+  rotatable_bonds: number;
+  svg_image: string;
+}
+
+export interface MolFileParseResponse {
+  molecules: MolFilePreview[];
+}
+
+export interface SpreadsheetPreview {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  suggested_mapping: Record<string, string | null>;
+  total_rows: number;
+}
+
+export interface SpreadsheetImportResult {
+  imported: number;
+  failed: { row: number; error: string }[];
+}
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  lab_id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface AuditLog {
@@ -74,6 +125,47 @@ export interface AuditLog {
   entity_name: string | null;
   detail: string | null;
   created_at: string; // ISO datetime
+}
+
+export interface Protein {
+  id: string;
+  lab_id: string;
+  created_by_user_id: string | null;
+  name: string;
+  display_name: string | null;
+  uniprot_id: string | null;
+  pdb_id: string | null;
+  sequence: string | null;
+  source: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProteinResolution {
+  name: string;
+  display_name: string | null;
+  uniprot_id: string | null;
+  pdb_id: string | null;
+  sequence: string | null;
+  source: string;
+}
+
+export interface ProteinCreate {
+  name: string;
+  display_name?: string | null;
+  uniprot_id?: string | null;
+  pdb_id?: string | null;
+  sequence?: string | null;
+  source: string;
+  notes?: string | null;
+}
+
+export interface ProteinPage {
+  items: Protein[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface AuditLogPage {

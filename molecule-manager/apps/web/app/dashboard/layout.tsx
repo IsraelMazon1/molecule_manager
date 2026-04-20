@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
+import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/lib/auth";
 
 export default function DashboardLayout({
@@ -46,6 +47,7 @@ export default function DashboardLayout({
             Molecule Manager
           </Link>
           <div className="flex items-center gap-5">
+            <NotificationBell />
             <span className="text-sm text-zinc-400">{user.email}</span>
             <button
               onClick={handleLogout}

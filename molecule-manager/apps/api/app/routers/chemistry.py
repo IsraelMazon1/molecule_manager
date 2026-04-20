@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from app.core.limiter import limiter
 from app.deps.auth import get_current_user
 from app.models.user import User
 from app.schemas.chemistry import ChemistryPropertiesResponse, PubChemResult, ValidateSMILESRequest
@@ -10,7 +11,8 @@ router = APIRouter(prefix="/api/v1/chemistry", tags=["chemistry"])
 
 
 @router.post("/validate", response_model=ChemistryPropertiesResponse)
-def validate(body: ValidateSMILESRequest) -> dict:
+@limiter.limit("30/minute")
+def validate(request: Request, body: ValidateSMILESRequest, _current_user: User = Depends(get_current_user)) -> dict:
     """Validate a SMILES string and return computed properties + SVG.
 
     Returns 422 if the SMILES cannot be parsed.

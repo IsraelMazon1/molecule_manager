@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -5,7 +7,12 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.limiter import limiter
 from app.core.settings import settings
-from app.routers import audit, auth, chemistry, experiments, labs, molecules
+from app.routers import audit, auth, chemistry, experiments, labs, molecules, notifications, proteins
+
+logger = logging.getLogger(__name__)
+
+if not settings.cookie_secure and settings.env not in ("development", "dev"):
+    logger.warning("COOKIE_SECURE is False outside of a development environment — session cookies will not have the Secure flag")
 
 app = FastAPI(title="Molecule Manager API")
 app.state.limiter = limiter
@@ -25,6 +32,8 @@ app.include_router(labs.router)
 app.include_router(chemistry.router)
 app.include_router(molecules.router)
 app.include_router(experiments.router)
+app.include_router(notifications.router)
+app.include_router(proteins.router)
 
 
 @app.get("/health")

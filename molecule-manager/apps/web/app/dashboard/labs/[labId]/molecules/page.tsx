@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import type { Molecule, SimilarityHit } from "@/types";
+import { sanitizeSvg } from "@/lib/sanitize";
+import type { Molecule, MolFileParseResponse, MolFilePreview, SimilarityHit } from "@/types";
 
 // ─── SVG thumbnail ────────────────────────────────────────────────────────────
 
@@ -13,7 +14,7 @@ function SvgThumb({ svg }: { svg: string }) {
   return (
     <div
       className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-zinc-100 bg-white [&>svg]:h-full [&>svg]:w-full"
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: sanitizeSvg(svg) }}
     />
   );
 }
@@ -132,6 +133,86 @@ export default function MoleculesPage() {
   const [similarityResults, setSimilarityResults] = useState<
     SimilarityHit[] | null
   >(null);
+
+  // ── MOL/SDF import state ───────────────────────────────────────────────────
+  const [showImport, setShowImport] = useState(false);
+  const [importPreviews, setImportPreviews] = useState<MolFilePreview[]>([]);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importSaving, setImportSaving] = useState(false);
+  const [importMethodUsed, setImportMethodUsed] = useState("");
+  const [importDateCreated, setImportDateCreated] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [importNames, setImportNames] = useState<string[]>([]);
+  const [importSelected, setImportSelected] = useState<boolean[]>([]);
+
+  async function handleImportFile(file: File) {
+    setImportFile(file);
+    setImportError("");
+    setImportPreviews([]);
+    setImportLoading(true);
+    try {
+      const res = await api.postFile<MolFileParseResponse>(
+        `/api/v1/labs/${labId}/molecules/import-mol`,
+        file,
+      );
+      setImportPreviews(res.molecules);
+      setImportNames(res.molecules.map((_, i) => `Imported molecule ${i + 1}`));
+      setImportSelected(res.molecules.map(() => true));
+    } catch (err) {
+      setImportError(
+        err instanceof ApiError ? err.message : "Failed to parse file.",
+      );
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function handleImportSave() {
+    if (!importMethodUsed.trim()) {
+      setImportError("Method used is required.");
+      return;
+    }
+    setImportSaving(true);
+    setImportError("");
+    try {
+      const items = importPreviews
+        .map((p, i) => ({ preview: p, name: importNames[i], selected: importSelected[i] }))
+        .filter((x) => x.selected)
+        .map((x) => ({
+          name: x.name.trim() || "Unnamed",
+          smiles: x.preview.smiles,
+          date_created: importDateCreated,
+          method_used: importMethodUsed.trim(),
+        }));
+
+      if (items.length === 0) {
+        setImportError("Select at least one molecule.");
+        setImportSaving(false);
+        return;
+      }
+
+      await api.post(`/api/v1/labs/${labId}/molecules/bulk-create`, {
+        molecules: items,
+      });
+
+      setShowImport(false);
+      setImportPreviews([]);
+      setImportFile(null);
+      setImportNames([]);
+      setImportSelected([]);
+      setImportMethodUsed("");
+      fetchMolecules({ name: "", method: "", dateFrom: "", dateTo: "" });
+    } catch (err) {
+      setImportError(
+        err instanceof ApiError ? err.message : "Failed to save molecules.",
+      );
+    } finally {
+      setImportSaving(false);
+    }
+  }
 
   // ── Text search helpers ────────────────────────────────────────────────────
 
@@ -257,12 +338,27 @@ export default function MoleculesPage() {
             Molecules
           </h1>
         </div>
-        <Link
-          href={`/dashboard/labs/${labId}/molecules/new`}
-          className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
-        >
-          Add molecule
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href={`/dashboard/labs/${labId}/molecules/import`}
+            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+          >
+            Spreadsheet
+          </Link>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+          >
+            Import MOL/SDF
+          </button>
+          <Link
+            href={`/dashboard/labs/${labId}/molecules/new`}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+          >
+            Add molecule
+          </Link>
+        </div>
       </div>
 
       {/* Mode toggle */}
@@ -536,6 +632,196 @@ export default function MoleculesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Import modal ─────────────────────────────────────────────── */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-4 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-zinc-900">
+                Import MOL / SDF file
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImport(false);
+                  setImportPreviews([]);
+                  setImportFile(null);
+                  setImportError("");
+                  setImportNames([]);
+                  setImportSelected([]);
+                }}
+                className="text-zinc-400 hover:text-zinc-600 text-xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* File picker */}
+            {importPreviews.length === 0 && (
+              <div>
+                <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-zinc-300 p-10 text-center transition-colors hover:border-zinc-400 hover:bg-zinc-50">
+                  <span className="text-sm font-medium text-zinc-700">
+                    {importLoading
+                      ? "Parsing file..."
+                      : "Click to select a .mol or .sdf file"}
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    SDF files may contain up to 50 molecules
+                  </span>
+                  <input
+                    type="file"
+                    accept=".mol,.sdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleImportFile(f);
+                    }}
+                    disabled={importLoading}
+                  />
+                </label>
+                {importError && (
+                  <p className="mt-3 text-sm text-red-600">{importError}</p>
+                )}
+              </div>
+            )}
+
+            {/* Previews */}
+            {importPreviews.length > 0 && (
+              <div className="space-y-4">
+                {/* Shared fields */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500">
+                      Method used *
+                    </label>
+                    <input
+                      value={importMethodUsed}
+                      onChange={(e) => setImportMethodUsed(e.target.value)}
+                      placeholder="e.g. File import"
+                      className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-500">
+                      Date created *
+                    </label>
+                    <input
+                      type="date"
+                      value={importDateCreated}
+                      onChange={(e) => setImportDateCreated(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Select all / deselect */}
+                {importPreviews.length > 1 && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setImportSelected(importPreviews.map(() => true))
+                      }
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setImportSelected(importPreviews.map(() => false))
+                      }
+                      className="text-xs font-medium text-zinc-500 hover:text-zinc-700"
+                    >
+                      Deselect all
+                    </button>
+                    <span className="text-xs text-zinc-400">
+                      {importSelected.filter(Boolean).length} of{" "}
+                      {importPreviews.length} selected
+                    </span>
+                  </div>
+                )}
+
+                {/* Molecule list */}
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {importPreviews.map((p, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-3 rounded-xl border p-3 ${
+                        importSelected[i]
+                          ? "border-zinc-200 bg-white"
+                          : "border-zinc-100 bg-zinc-50 opacity-60"
+                      }`}
+                    >
+                      {importPreviews.length > 1 && (
+                        <input
+                          type="checkbox"
+                          checked={importSelected[i]}
+                          onChange={(e) => {
+                            const next = [...importSelected];
+                            next[i] = e.target.checked;
+                            setImportSelected(next);
+                          }}
+                          className="mt-1 accent-zinc-900"
+                        />
+                      )}
+                      <div
+                        className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-zinc-100 bg-white [&>svg]:h-full [&>svg]:w-full"
+                        dangerouslySetInnerHTML={{ __html: sanitizeSvg(p.svg_image) }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <input
+                          value={importNames[i]}
+                          onChange={(e) => {
+                            const next = [...importNames];
+                            next[i] = e.target.value;
+                            setImportNames(next);
+                          }}
+                          placeholder="Molecule name"
+                          className="w-full rounded border border-zinc-200 px-2 py-1 text-sm text-zinc-900 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
+                        />
+                        <p className="mt-1 font-mono text-xs text-zinc-500 truncate">
+                          {p.molecular_formula} &middot;{" "}
+                          {p.molecular_weight.toFixed(2)} g/mol
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {importError && (
+                  <p className="text-sm text-red-600">{importError}</p>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleImportSave}
+                    disabled={importSaving}
+                    className="flex-1 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+                  >
+                    {importSaving
+                      ? "Saving..."
+                      : `Save ${importSelected.filter(Boolean).length} molecule${importSelected.filter(Boolean).length !== 1 ? "s" : ""}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportPreviews([]);
+                      setImportFile(null);
+                      setImportError("");
+                    }}
+                    className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                  >
+                    Pick different file
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

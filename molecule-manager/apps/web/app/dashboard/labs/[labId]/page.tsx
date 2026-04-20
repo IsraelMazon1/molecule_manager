@@ -20,6 +20,7 @@ export default function LabPage() {
 
   const [promotingId, setPromotingId] = useState<string | null>(null);
   const [promoteError, setPromoteError] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   function fetchLab() {
     return api.get<LabDetail>(`/api/v1/labs/${labId}`);
@@ -59,6 +60,34 @@ export default function LabPage() {
     }
   }
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiBase) throw new Error("NEXT_PUBLIC_API_URL is not configured");
+      const res = await fetch(`${apiBase}/api/v1/labs/${labId}/export`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Extract filename from Content-Disposition or use fallback
+      const cd = res.headers.get("Content-Disposition");
+      const match = cd?.match(/filename="?([^"]+)"?/);
+      a.download = match?.[1] ?? `export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Silently fail — the button will reset
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-64 items-center justify-center">
@@ -88,22 +117,34 @@ export default function LabPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       {/* Header */}
-      <div>
-        <Link
-          href="/dashboard"
-          className="text-xs text-zinc-400 hover:text-zinc-600"
+      <div className="flex items-start justify-between">
+        <div>
+          <Link
+            href="/dashboard"
+            className="text-xs text-zinc-400 hover:text-zinc-600"
+          >
+            &larr; All labs
+          </Link>
+          <h1 className="mt-2 text-2xl font-semibold text-zinc-900">
+            {lab.name}
+          </h1>
+          <p className="mt-0.5 text-sm text-zinc-400">
+            Lab code:{" "}
+            <span className="font-mono font-medium tracking-widest text-zinc-600">
+              {lab.lab_code}
+            </span>
+          </p>
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="mt-2 flex items-center gap-2 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50"
         >
-          ← All labs
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">
-          {lab.name}
-        </h1>
-        <p className="mt-0.5 text-sm text-zinc-400">
-          Lab code:{" "}
-          <span className="font-mono font-medium tracking-widest text-zinc-600">
-            {lab.lab_code}
-          </span>
-        </p>
+          {exporting && (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-700" />
+          )}
+          {exporting ? "Exporting..." : "Export to Excel"}
+        </button>
       </div>
 
       {/* Stats */}
@@ -140,6 +181,21 @@ export default function LabPage() {
         </Link>
 
         <Link
+          href={`/dashboard/labs/${labId}/proteins`}
+          className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-400 hover:shadow-sm"
+        >
+          <div>
+            <h2 className="font-semibold text-zinc-900">Proteins</h2>
+            <p className="mt-0.5 text-sm text-zinc-500">
+              Resolve, track, and view protein structures
+            </p>
+          </div>
+          <span className="text-xl text-zinc-300 transition-colors group-hover:text-zinc-600">
+            →
+          </span>
+        </Link>
+
+        <Link
           href={`/dashboard/labs/${labId}/experiments`}
           className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-400 hover:shadow-sm"
         >
@@ -154,10 +210,25 @@ export default function LabPage() {
           </span>
         </Link>
 
+        <Link
+          href={`/dashboard/labs/${labId}/members`}
+          className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-400 hover:shadow-sm"
+        >
+          <div>
+            <h2 className="font-semibold text-zinc-900">Members</h2>
+            <p className="mt-0.5 text-sm text-zinc-500">
+              View and manage lab members
+            </p>
+          </div>
+          <span className="text-xl text-zinc-300 transition-colors group-hover:text-zinc-600">
+            →
+          </span>
+        </Link>
+
         {isPI && (
           <Link
             href={`/dashboard/labs/${labId}/audit`}
-            className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-400 hover:shadow-sm sm:col-span-2"
+            className="group flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-6 transition-all hover:border-zinc-400 hover:shadow-sm"
           >
             <div>
               <h2 className="font-semibold text-zinc-900">Audit Log</h2>

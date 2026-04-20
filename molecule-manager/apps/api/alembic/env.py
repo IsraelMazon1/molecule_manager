@@ -15,8 +15,12 @@ config = context.config
 
 # Override sqlalchemy.url from the DATABASE_URL environment variable.
 database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+if not database_url:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. "
+        "Alembic refuses to fall back to alembic.ini's placeholder URL."
+    )
+config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

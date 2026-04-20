@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
+import { sanitizeSvg } from "@/lib/sanitize";
 import type { Molecule } from "@/types";
 
 // Shape returned by POST /api/v1/chemistry/validate
@@ -373,7 +374,7 @@ export default function NewMoleculePage() {
               {/* SVG */}
               <div
                 className="h-36 w-36 shrink-0 overflow-hidden rounded-lg border border-green-200 bg-white [&>svg]:h-full [&>svg]:w-full"
-                dangerouslySetInnerHTML={{ __html: preview.svg_image }}
+                dangerouslySetInnerHTML={{ __html: sanitizeSvg(preview.svg_image) }}
               />
               {/* Properties */}
               <div className="flex-1 min-w-0">
