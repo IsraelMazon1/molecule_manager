@@ -15,18 +15,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const u = await api.post<User>("/api/v1/auth/login", { email, password });
+    document.cookie = "logged_in=1; path=/; max-age=604800; SameSite=Lax";
     setUser(u);
     return u;
   }, []);
 
   const signup = useCallback(async (email: string, password: string) => {
     const u = await api.post<User>("/api/v1/auth/signup", { email, password });
+    document.cookie = "logged_in=1; path=/; max-age=604800; SameSite=Lax";
     setUser(u);
     return u;
   }, []);
 
   const logout = useCallback(async () => {
     await api.post("/api/v1/auth/logout");
+    document.cookie = "logged_in=; path=/; max-age=0";
     setUser(null);
   }, []);
 

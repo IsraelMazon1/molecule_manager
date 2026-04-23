@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const SESSION_COOKIE = "session";
+const LOGGED_IN_COOKIE = "logged_in";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = request.cookies.has(SESSION_COOKIE);
+  const hasSession = request.cookies.has(LOGGED_IN_COOKIE);
 
   // Protect /dashboard and all nested routes
   if (pathname.startsWith("/dashboard")) {
