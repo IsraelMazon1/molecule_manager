@@ -31,9 +31,14 @@ export function useAuth(): AuthState {
 
 export async function fetchCurrentUser(): Promise<User | null> {
   try {
-    return await api.get<User>("/api/v1/auth/me");
-  } catch (err) {
-    if (err instanceof ApiError && err.isUnauthorized) return null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const user = await api.get<User>("/api/v1/auth/me", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return user;
+  } catch {
     return null;
   }
 }

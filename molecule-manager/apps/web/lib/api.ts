@@ -68,8 +68,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 // ─── Public API client ────────────────────────────────────────────────────────
 
 export const api = {
-  get<T>(path: string): Promise<T> {
-    return request<T>(path);
+  get<T>(path: string, init?: RequestInit): Promise<T> {
+    return request<T>(path, init);
   },
 
   post<T>(path: string, body?: unknown): Promise<T> {

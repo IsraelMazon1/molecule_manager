@@ -10,7 +10,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
 
   useEffect(() => {
-    fetchCurrentUser().then(setUser);
+    fetchCurrentUser().then(setUser).catch(() => setUser(null));
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
