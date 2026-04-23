@@ -20,6 +20,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 print(f"CORS origins: {origins}")
+print(f"Cookie config: secure={settings.cookie_secure}, samesite={settings.cookie_samesite}")
 
 app.add_middleware(
     CORSMiddleware,

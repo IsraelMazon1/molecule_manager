@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # Optional — defaults are safe for production (HTTPS)
     cookie_secure: bool = True
+    cookie_samesite: str = "lax"
 
     # Environment name — set to "development" or "dev" for local work
     env: str = "production"

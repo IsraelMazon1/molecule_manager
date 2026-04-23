@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _COOKIE_KWARGS = dict(
     key=SESSION_COOKIE_NAME,
     httponly=True,
-    samesite="lax",
+    samesite=settings.cookie_samesite,
     max_age=SESSION_MAX_AGE,
 )
 
@@ -66,4 +66,4 @@ def me(current_user: User = Depends(get_current_user)) -> User:
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(response: Response) -> None:
-    response.delete_cookie(key=SESSION_COOKIE_NAME, samesite="lax")
+    response.delete_cookie(key=SESSION_COOKIE_NAME, samesite=settings.cookie_samesite)
