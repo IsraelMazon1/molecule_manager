@@ -23,15 +23,18 @@ export default function DashboardLayout({
 
   if (user === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <p className="text-gray-500">Loading...</p>
       </div>
     );
   }
 
   if (user === null) {
-    router.replace("/login");
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <p className="text-gray-500">Redirecting to login...</p>
+      </div>
+    );
   }
 
   async function handleLogout() {
