@@ -29,7 +29,10 @@ export default function DashboardLayout({
     );
   }
 
-  if (user === null) return null;
+  if (user === null) {
+    router.replace("/login");
+    return null;
+  }
 
   async function handleLogout() {
     await logout();
